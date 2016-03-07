@@ -5,6 +5,13 @@ endif
 
 let g:vim_xcodebuild_maxdepth = get(g:, 'vim_xcodebuild_maxdepth', 4)
 
+let s:xcodebuild_cmd = 'xcodebuild %s'
+
+if executable('xcpretty')
+    let s:xcpretty_cmd = ' | xcpretty'
+else
+    let s:xcpretty_cmd = ''
+endif
 
 function! xb#DetectProject(file, verbose) abort
     let b:xcode_project = ''
@@ -35,11 +42,14 @@ endfunction
 function! xb#SetupMappings() abort
     command! -buffer -bang -nargs=? -complete=custom,xb#CompleteActions BuildXcodeProject call xb#BuildProject("<args>", <bang>0)
     command! -buffer -bang -nargs=0 CleanXcodeProject call xb#CleanProject(<bang>0)
-    command! -buffer -nargs=0 RunXcodeProject call xb#RunProject()
+    command! -buffer -bang -nargs=0 RunXcodeProject call xb#RunProject(<bang>0)
 
-    nnoremap <buffer> <silent> <LocalLeader>b :BuildXcodeProject<CR>
-    nnoremap <buffer> <silent> <LocalLeader>c :CleanXcodeProject<CR>
-    nnoremap <buffer> <silent> <LocalLeader>r :RunXcodeProject<CR>
+    nnoremap <buffer> <silent> <LocalLeader>b :BuildXcodeProject!<CR>
+    nnoremap <buffer> <silent> <LocalLeader>B :BuildXcodeProject<CR>
+    nnoremap <buffer> <silent> <LocalLeader>c :CleanXcodeProject!<CR>
+    nnoremap <buffer> <silent> <LocalLeader>C :CleanXcodeProject<CR>
+    nnoremap <buffer> <silent> <LocalLeader>r :RunXcodeProject!<CR>
+    nnoremap <buffer> <silent> <LocalLeader>R :RunXcodeProject<CR>
 endfunction
 
 function! xb#CompleteOptions(A, L, P) abort
@@ -66,37 +76,33 @@ function! xb#HasProject() abort
     return exists('b:xcode_project') && strlen(b:xcode_project)
 endfunction
 
-function! xb#Run(cmd, silent) abort
+function! xb#Run(cmd) abort
     if has('nvim')
         botright new | call termopen(a:cmd) | startinsert
     else
-        if a:silent
-            silent! execute '!' . a:cmd
-            redraw!
-        else
-            unsilent execute '!' . a:cmd
-        endif
+        execute '!' . a:cmd
     endif
 endfunction
 
-function! xb#Build(options, ...) abort
-    let cmd = printf("xcodebuild %s", a:options)
-    call xb#Run(cmd, a:0 > 0 ? a:1 : 0)
+function! xb#Build(options, use_xcpretty) abort
+    let cmd = s:xcodebuild_cmd . (a:use_xcpretty ? s:xcpretty_cmd : '')
+    let cmd = printf(cmd, a:options)
+    call xb#Run(cmd)
 endfunction
 
-function! xb#BuildProject(action, ...) abort
+function! xb#BuildProject(action, use_xcpretty) abort
     if xb#HasProject()
         let action = strlen(a:action) ? a:action : 'build'
         let options = printf("-project %s %s", shellescape(b:xcode_project), action)
-        call xb#Build(options, a:0 > 0 ? a:1 : 0)
+        call xb#Build(options, a:use_xcpretty)
     endif
 endfunction
 
-function! xb#CleanProject(silent) abort
-    call xb#BuildProject('clean', a:silent)
+function! xb#CleanProject(bang) abort
+    call xb#BuildProject('clean', a:bang)
 endfunction
 
-function! xb#RunProject() abort
+function! xb#RunProject(bang) abort
     if xb#HasProject()
         let build = finddir('build', b:xcode_project . ';')
         let program = build . '/Release/' . fnamemodify(b:xcode_project, ':t:r')
@@ -104,14 +110,16 @@ function! xb#RunProject() abort
 
         if empty(build) || !filereadable(program)
             if has('nvim')
-                call xb#BuildProject('build' . ' ; ' . program)
+                let options = 'build' . (a:bang ? s:xcpretty_cmd : '')
+                call xb#BuildProject(options . ' ; echo ; ' . program, 0)
             else
-                call xb#BuildProject('build', 1)
+                silent! !echo
+                silent! call xb#BuildProject('build', a:bang)
             endif
         endif
 
         if executable(program)
-            call xb#Run(program, 0)
+            call xb#Run(program)
         endif
     endif
 endfunction
