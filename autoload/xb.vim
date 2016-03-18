@@ -108,14 +108,12 @@ function! xb#RunProject(bang) abort
         let program = build . '/Release/' . fnamemodify(b:xcode_project, ':t:r')
         let program = fnamemodify(program, ':p')
 
-        if empty(build) || !filereadable(program)
-            if has('nvim')
-                let options = 'build' . (a:bang ? s:xcpretty_cmd : '')
-                call xb#BuildProject(options . ' ; echo ; ' . program, 0)
-            else
-                silent! !echo
-                silent! call xb#BuildProject('build', a:bang)
-            endif
+        if has('nvim')
+            let options = 'build' . (a:bang ? s:xcpretty_cmd : '')
+            call xb#BuildProject(options . ' ; echo ; ' . program, 0)
+        else
+            silent! !echo
+            silent! call xb#BuildProject('build', a:bang)
         endif
 
         if executable(program)
